@@ -2,14 +2,8 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
-/.vs/Akamai.EdgeGrid.Auth/copilot-chat/1f3197a4
+/.vs
 /EdgeGridAuth/obj
 /EdgeGridAuth/bin/Debug/net8.0
-/.vs/Akamai.EdgeGrid.Auth/DesignTimeBuild
-/.vs/Akamai.EdgeGrid.Auth/FileContentIndex
-/.vs/Akamai.EdgeGrid.Auth/v17/.futdcache.v2
-/.vs/Akamai.EdgeGrid.Auth/v17/.suo
-/.vs/AkamaiOPEN-edgegrid-C-Sharp/FileContentIndex
-/.vs
 /EdgeGridAuthTest/bin/Debug/net8.0
 /OpenAPI/obj
