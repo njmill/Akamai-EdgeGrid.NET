@@ -128,6 +128,10 @@ namespace Akamai.EdgeGrid.AuthV2
         /// The client secret
         /// </summary>
         public string Secret { get; private set; }
+        /// <summary>
+        /// API Hostname
+        /// </summary>
+        public string Host { get; }
 
         /// <summary>
         /// Default Constructor
@@ -161,19 +165,22 @@ namespace Akamai.EdgeGrid.AuthV2
             string fileContent = File.ReadAllText(filepath);
 
             // Use regex to find key-value pairs
-            string clientToken = GetValueByKey(fileContent, "clientToken");
-            string accessToken = GetValueByKey(fileContent, "accessToken");
-            string secret = GetValueByKey(fileContent, "secret");
+            string clientToken = GetValueByKey(fileContent, "client_token");
+            string accessToken = GetValueByKey(fileContent, "access_token");
+            string secret = GetValueByKey(fileContent, "client_secret");
+            string host = GetValueByKey(fileContent, "host");
 
             // Call the existing constructor with the extracted values
             this.ClientToken = clientToken;
             this.AccessToken = accessToken;
             this.Secret = secret;
+            this.Host = host;
+
         }
 
         private string GetValueByKey(string content, string key)
         {
-            string pattern = $@"{key}:\s*(\S+)";
+            string pattern = $@"{key}\s=\s*(\S+)";
             Match match = Regex.Match(content, pattern);
             if (match.Success)
             {

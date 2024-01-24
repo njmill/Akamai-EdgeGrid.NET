@@ -12,8 +12,9 @@ class Program
         EdgeGridV2Signer signer = new EdgeGridV2Signer();
 
         // Create local variables for ClientToken, AccessToken, and Secret
-        var edgeRc = "/path/to/edgeRc.txt";
-
+        var edgeRc = "edgerc.txt"; // This should be the path to your .edgerc file
+        // The API endpoint you want to call
+        var endPoint = "/papi/v1/contracts";
         // Create a new instance of ClientCredential
         ClientCredential credential = new ClientCredential(edgeRc);
 
@@ -21,7 +22,7 @@ class Program
         HttpRequestMessage request = new HttpRequestMessage
         {
             Method = HttpMethod.Get,
-            RequestUri = new Uri("https://your-api-endpoint.com")
+            RequestUri = new Uri("https://" + credential.Host + endPoint)
         };
 
         // Execute the request
