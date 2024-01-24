@@ -248,7 +248,9 @@ namespace Akamai.EdgeGrid.Auth
         {
             string TestURIProtocol = "asdf";
             WebRequest.RegisterPrefix(TestURIProtocol, new WebRequestTestCreate());
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
             var request = (HttpWebRequestTest)WebRequest.Create("asdf://www.example.com/");
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
 
 
             var signer = new EdgeGridV1Signer();
@@ -262,7 +264,9 @@ namespace Akamai.EdgeGrid.Auth
         {
             string TestURIProtocol = "asdf";
             WebRequest.RegisterPrefix(TestURIProtocol, new WebRequestTestCreate());
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
             var request = (HttpWebRequestTest)WebRequest.Create("asdf://www.example.com/");
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
 
 
             var signer = new EdgeGridV1Signer();
@@ -280,7 +284,9 @@ namespace Akamai.EdgeGrid.Auth
         {
             string TestURIProtocol = "asdf";
             WebRequest.RegisterPrefix(TestURIProtocol, new WebRequestTestCreate());
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
             var request = (HttpWebRequestTest)WebRequest.Create("asdf://www.example.com/");
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
 
 
             var signer = new EdgeGridV1Signer();
@@ -296,7 +302,7 @@ namespace Akamai.EdgeGrid.Auth
             catch (Exception ex)
             {
                 Assert.AreEqual(ex.Message, "Local server Date is more than 30s out of sync with Remote server");
-                throw ex;
+                throw; //NMILLER 1/24/2024: rethrow to preserve stack information
             }
         }
 
@@ -311,7 +317,9 @@ namespace Akamai.EdgeGrid.Auth
             var signer = new EdgeGridV1Signer();
             string TestURIProtocol = "asdf";
             WebRequest.RegisterPrefix(TestURIProtocol, new WebRequestTestCreate());
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
             var request = (HttpWebRequestTest)WebRequest.Create("asdf://www.example.com/");
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
 
             var response = request.CreateResponse(HttpStatusCode.OK);
             request.NextResponse = response;

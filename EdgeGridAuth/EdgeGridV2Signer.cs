@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Author: colinb@akamai.com  (Colin Bendell)
+// Author: akamaiEdgeGrid@spbk.us (Nick Miller)
 //
+using Akamai.EdgeGrid.Auth;
 using Akamai.Utils;
 using System;
 using System.Collections.Generic;
@@ -23,10 +24,10 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
-namespace Akamai.EdgeGrid.Auth
+namespace Akamai.EdgeGrid.AuthV2
 {
-
     /// <summary>
     /// The EdgeGrid Signer is responsible for brokering a requests.This class is responsible 
     /// for the core interaction logic given an API command and the associated set of parameters.
@@ -40,12 +41,12 @@ namespace Akamai.EdgeGrid.Auth
     /// TODO: support multiplexing 
     /// TODO: optimize and adapt throughput based on connection latency
     /// 
-    /// Author: colinb@akamai.com  (Colin Bendell)
+    /// This is a new implementation of the EdgeGrid Signer. It is not backwards compatible with the V1 implementation, so the original
+    /// class is kept for legacy applications.  This class replaces WebRequest with System.Net.Http.HttpClient and utilizes async/await.
     /// 
-    /// Class kept as-is with no further changes for legacy applications. New refractor is in the EdgeGridV2Signer class.
-    /// 
+    /// Author: akamaiEdgeGrid@spbk.us (Nick Miller)
     /// </summary>
-    public class EdgeGridV1Signer: IRequestSigner
+    public class EdgeGridV2Signer: IRequestSigner
     {
 
         public class SignType
@@ -94,7 +95,7 @@ namespace Akamai.EdgeGrid.Auth
         /// </summary>
 	    internal long? MaxBodyHashSize {get; private set; }
 
-        public EdgeGridV1Signer(IList<string> headers = null, long? maxBodyHashSize = 2048)
+        public EdgeGridV2Signer(IList<string> headers = null, long? maxBodyHashSize = 2048)
         {
             this.HeadersToInclude = headers ?? new List<string>();
             this.MaxBodyHashSize = maxBodyHashSize;
@@ -116,7 +117,7 @@ namespace Akamai.EdgeGrid.Auth
                 nonce.ToString().ToLower());
         }
 
-        internal string GetRequestData(string method, Uri uri, NameValueCollection requestHeaders = null, Stream requestStream = null)
+        internal string GetRequestData(string method, Uri uri, System.Net.Http.Headers.HttpRequestHeaders requestHeaders = null, Stream requestStream = null)
         {
             if (string.IsNullOrEmpty(method))
                 throw new ArgumentNullException("Invalid request: empty request method");
@@ -136,7 +137,7 @@ namespace Akamai.EdgeGrid.Auth
                 bodyHash);
         }
 
-        internal string GetRequestHeaders(NameValueCollection requestHeaders)
+        internal string GetRequestHeaders(System.Net.Http.Headers.HttpRequestHeaders requestHeaders)
         {
             if (requestHeaders == null) return string.Empty;
 
@@ -144,7 +145,7 @@ namespace Akamai.EdgeGrid.Auth
             foreach (string name in this.HeadersToInclude)
             {
                 //TODO: should auto detect headers and remove standard non-http headers
-                string value = requestHeaders.Get(name);
+                string value = requestHeaders.GetValues(name).ToString();
                 if (!string.IsNullOrEmpty(value))
                     headers.AppendFormat("{0}:{1}\t", name, Regex.Replace(value.Trim(), "\\s+", " ", RegexOptions.Compiled));
             }
@@ -181,47 +182,32 @@ namespace Akamai.EdgeGrid.Auth
         /// TODO: catch rate limitting errors. Should delay and retry.
         /// </summary>
         /// <param name="response">the active response object</param>
-        public void Validate(WebResponse response)
+        public void Validate(HttpResponseMessage response)
         {
-            if (response is HttpWebResponse)
+            if (response.StatusCode != HttpStatusCode.OK)
             {
-                HttpWebResponse httpResponse = (HttpWebResponse)response;
-                if (httpResponse.StatusCode == HttpStatusCode.OK)
-                    return;
-
                 DateTime responseDate;
-                string date = response.Headers.Get("Date");
+                string date = response.Headers.Date.ToString();
                 if (date != null
                     && DateTime.TryParse(date, out responseDate))
                     if (DateTime.Now.Subtract(responseDate).TotalSeconds > 30)
                         throw new HttpRequestException("Local server Date is more than 30s out of sync with Remote server");
 
-                string responseBody = null;
-                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-                {
-                    responseBody = reader.ReadToEnd();
-                    // Do something with the value
-                }
-               
-                throw new HttpRequestException(string.Format("Unexpected Response from Server: {0} {1}\n{2}\n\n{3}", httpResponse.StatusCode, httpResponse.StatusDescription, response.Headers, responseBody));
+                string responseBody = response.Content.ReadAsStringAsync().Result;
+                throw new HttpRequestException(string.Format("Unexpected Response from Server: {0} {1}\n{2}\n\n{3}", response.StatusCode, response.ReasonPhrase, response.Headers, responseBody));
             }
         }
 
-        /// <summary>
-        /// Signs the given request with the given client credential.
-        /// </summary>
-        /// <param name="request">The web request to sign</param>
-        /// <param name="credential">the credential used in the signing</param>
-        /// <returns>the signed request</returns>
-        public WebRequest Sign(WebRequest request, ClientCredential credential, Stream uploadStream = null)
+        // Update the method signature to use async Task<HttpRequestMessage>
+        public HttpRequestMessage Sign(HttpRequestMessage request, ClientCredential credential, Stream uploadStream = null)
         {
             DateTime timestamp = DateTime.UtcNow;
 
             //already signed?
-            if (request.Headers.Get(EdgeGridV1Signer.AuthorizationHeader) != null)
+            if (request.Headers.Contains(EdgeGridV1Signer.AuthorizationHeader))
                 request.Headers.Remove(EdgeGridV1Signer.AuthorizationHeader);
 
-            string requestData = GetRequestData(request.Method, request.RequestUri, request.Headers, uploadStream);
+            string requestData = GetRequestData(request.Method.Method, request.RequestUri, request.Headers, uploadStream);
             string authData = GetAuthDataValue(credential, timestamp);
             string authHeader = GetAuthorizationHeaderValue(credential, timestamp, authData, requestData);
             request.Headers.Add(EdgeGridV1Signer.AuthorizationHeader, authHeader);
@@ -234,62 +220,79 @@ namespace Akamai.EdgeGrid.Auth
         /// </summary>
         /// <param name="request">the </param>
         /// <returns> the output stream of the response</returns>
-        public Stream Execute(WebRequest request, ClientCredential credential, Stream uploadStream = null)
+        public async Task<Stream> Execute(HttpRequestMessage request, ClientCredential credential, Stream uploadStream = null)
         {
-
-            //Make sure that this connection will behave nicely with multiple calls in a connection pool.
-            ServicePointManager.EnableDnsRoundRobin = true; 
+            // Make sure that this connection will behave nicely with multiple calls in a connection pool.
+            ServicePointManager.EnableDnsRoundRobin = true;
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            request = this.Sign(request, credential, uploadStream);
+            request = Sign(request, credential, uploadStream);
 
-            if (request.Method == "PUT" || request.Method == "POST" || request.Method == "PATCH")
+            if (request.Method == HttpMethod.Put || request.Method == HttpMethod.Post || request.Method == HttpMethod.Patch)
             {
-                //Disable the nastiness of Expect100Continue
+                // Disable the nastiness of Expect100Continue
                 ServicePointManager.Expect100Continue = false;
                 if (uploadStream == null)
-                    request.ContentLength = 0;
+                    request.Content = new StreamContent(Stream.Null);
                 else if (uploadStream.CanSeek)
-                    request.ContentLength = uploadStream.Length;
-                else if (request is HttpWebRequest)
-                    ((HttpWebRequest)request).SendChunked = true;
+                    request.Content = new StreamContent(uploadStream);
+                // Problem 4: Rename the variable 'httpRequest' to avoid naming conflict
+                if (request is HttpRequestMessage httpRequestMessage)
+                {
+                    httpRequestMessage.Headers.TransferEncodingChunked = true;
+
+                    if (uploadStream != null)
+                    {
+                        // Avoid internal memory allocation before buffering the output
+                        httpRequestMessage.Content?.LoadIntoBufferAsync().ConfigureAwait(false);
+
+                        if (string.IsNullOrEmpty(httpRequestMessage.Content?.Headers.ContentType?.MediaType))
+                            httpRequestMessage.Content?.Headers.TryAddWithoutValidation("Content-Type", "application/json");
+
+                        using (Stream requestStream = await httpRequestMessage.Content.ReadAsStreamAsync())
+                        using (uploadStream)
+                            await uploadStream.CopyToAsync(requestStream, 1024 * 1024);
+                    }
+                }
+                else if (request is HttpRequestMessage)
+                    request.Headers.TransferEncodingChunked = true;
 
                 if (uploadStream != null)
                 {
-                    // avoid internal memory allocation before buffering the output
-                    if (request is HttpWebRequest)
-                        ((HttpWebRequest)request).AllowWriteStreamBuffering = false;
+                    // Avoid internal memory allocation before buffering the output
+                    if (request is HttpRequestMessage)
+                        request.Content?.LoadIntoBufferAsync().ConfigureAwait(false);
 
-                    if (string.IsNullOrEmpty(request.ContentType))
-                        request.ContentType = "application/json";
+                    if (string.IsNullOrEmpty(request.Content?.Headers.ContentType?.MediaType))
+                        request.Content?.Headers.TryAddWithoutValidation("Content-Type", "application/json");
 
-                    using (Stream requestStream = request.GetRequestStream())
+                    using (Stream requestStream = await request.Content.ReadAsStreamAsync())
                     using (uploadStream)
-                        uploadStream.CopyTo(requestStream, 1024 * 1024);
+                        await uploadStream.CopyToAsync(requestStream, 1024 * 1024);
                 }
             }
 
-            if (request is HttpWebRequest) 
+            if (request is HttpRequestMessage)
             {
-                var httpRequest = (HttpWebRequest)request;
-                httpRequest.Accept = "*/*";
-                if (String.IsNullOrEmpty(httpRequest.UserAgent)) 
-                    httpRequest.UserAgent = "EdgeGrid.Net/v1";
+                var httpRequest = (HttpRequestMessage)request; 
+                httpRequest.Headers.Add("Accept", "*/*");
+                if (String.IsNullOrEmpty(httpRequest.Headers.UserAgent.ToString()))
+                    httpRequest.Headers.Add("UserAgent", "EdgeGrid.Net/v2"); 
             }
 
-            WebResponse response = null;
+            HttpResponseMessage response = null;
             try
             {
-                response = request.GetResponse();
+                response = await new HttpClient().SendAsync(request);
             }
-            catch (WebException e)
+            catch (HttpRequestException e)
             {
                 // non 200 OK responses throw exceptions.
                 // is this because of Time drift? can we re-try?
-                using (response = e.Response)
+                //using (response = e.HResult)
                     Validate(response);
             }
 
-            return response.GetResponseStream();
+            return await response.Content.ReadAsStreamAsync();
         }
 
     }
