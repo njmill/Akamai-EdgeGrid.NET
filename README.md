@@ -43,7 +43,7 @@ HttpRequestMessage request = new HttpRequestMessage
 Stream responseStreamTask = await signer.Execute(request, credential);
 
 // Read the response
- using (StreamReader reader = new StreamReader(responseStream2))
+using (StreamReader reader = new StreamReader(responseStream2))
 {
     string response = await reader.ReadToEndAsync();
     Console.WriteLine(response);
