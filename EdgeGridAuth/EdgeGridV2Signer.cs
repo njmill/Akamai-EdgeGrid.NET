@@ -22,6 +22,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -233,44 +234,25 @@ namespace Akamai.EdgeGrid.AuthV2
                 ServicePointManager.Expect100Continue = false;
                 if (uploadStream == null)
                     request.Content = new StreamContent(Stream.Null);
-                else if (uploadStream.CanSeek)
-                    request.Content = new StreamContent(uploadStream);
-                // Problem 4: Rename the variable 'httpRequest' to avoid naming conflict
-                if (request is HttpRequestMessage httpRequestMessage)
-                {
-                    httpRequestMessage.Headers.TransferEncodingChunked = true;
+                
 
-                    if (uploadStream != null)
-                    {
-                        // Avoid internal memory allocation before buffering the output
-                        httpRequestMessage.Content?.LoadIntoBufferAsync().ConfigureAwait(false);
 
-                        if (string.IsNullOrEmpty(httpRequestMessage.Content?.Headers.ContentType?.MediaType))
-                            httpRequestMessage.Content?.Headers.TryAddWithoutValidation("Content-Type", "application/json");
-
-                        using (Stream requestStream = await httpRequestMessage.Content.ReadAsStreamAsync())
-                        using (uploadStream)
-                            await uploadStream.CopyToAsync(requestStream, 1024 * 1024);
-                    }
-                }
-                else if (request is HttpRequestMessage)
-                    request.Headers.TransferEncodingChunked = true;
 
                 if (uploadStream != null)
                 {
                     // Avoid internal memory allocation before buffering the output
-                    if (request is HttpRequestMessage)
-                        request.Content?.LoadIntoBufferAsync().ConfigureAwait(false);
+                    request.Content?.LoadIntoBufferAsync().ConfigureAwait(false);
+                    request.Content = new StreamContent(uploadStream);
 
                     if (string.IsNullOrEmpty(request.Content?.Headers.ContentType?.MediaType))
-                        request.Content?.Headers.TryAddWithoutValidation("Content-Type", "application/json");
-
-                    using (Stream requestStream = await request.Content.ReadAsStreamAsync())
-                    using (uploadStream)
-                        await uploadStream.CopyToAsync(requestStream, 1024 * 1024);
+                        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+                    if (uploadStream.CanSeek)
+                        request.Content.Headers.ContentLength = uploadStream.Length;
+                    else if (request is HttpRequestMessage)
+                        request.Headers.TransferEncodingChunked = true;
                 }
             }
-
+               
             if (request is HttpRequestMessage)
             {
                 var httpRequest = (HttpRequestMessage)request; 
