@@ -40,17 +40,14 @@ HttpRequestMessage request = new HttpRequestMessage
 };
 
 // Call the Execute method
-Task<Stream> responseStreamTask = signer.Execute(request, credential);
-
-// Wait for the task to complete and get the response stream
-Stream responseStream = responseStreamTask.Result;
+Stream responseStreamTask = await signer.Execute(request, credential);
 
 // Read the response
-using (StreamReader reader = new StreamReader(responseStream))
-{
-    string response = await reader.ReadToEndAsync();
-    Console.WriteLine(response);
-}
+ using (StreamReader reader = new StreamReader(responseStream2))
+ {
+     string response = await reader.ReadToEndAsync();
+     Console.WriteLine(response);
+ }
 
 
 ```
